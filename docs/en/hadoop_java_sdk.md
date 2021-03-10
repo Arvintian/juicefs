@@ -6,6 +6,11 @@ JuiceFS provides [Hadoop-compatible FileSystem](https://hadoop.apache.org/docs/c
 
 JuiceFS Hadoop Java SDK is compatible with Hadoop 2.x and Hadoop 3.x. As well as variety of components in Hadoop ecosystem.
 
+In order to make JuiceFS works with other components, it usually takes 2 steps:
+
+1. Put JAR file into the classpath of each Hadoop ecosystem component.
+2. Put JuiceFS configurations into the configuration file of each Hadoop ecosystem component (usually `core-site.xml`).
+
 ## Compiling
 
 You need first installing Go 1.13+, JDK 8+ and Maven, then run following commands:
@@ -115,9 +120,44 @@ When you use multiple JuiceFS file systems, all these configurations could be se
 
 Add configurations to `core-site.xml`.
 
+#### CDH 6
+
+Besides `core-site`, you also need to configure `mapreduce.application.classpath` of the YARN component, add:
+
+```shell
+$HADOOP_COMMON_HOME/lib/juicefs-hadoop.jar
+```
+
+#### HDP
+
+Besides `core-site`, you also need to configure `mapreduce.application.classpath` of the MapReduce2 component, add (variables do not need to be replaced):
+
+```shell
+/usr/hdp/${hdp.version}/hadoop/lib/juicefs-hadoop.jar
+```
+
 ### Configuration in Flink
 
 Add configurations to `conf/flink-conf.yaml`. You could only setup Flink client without modify configurations in Hadoop.
+
+## Restart Services
+
+When the following components need to access JuiceFS, they should be restarted.
+
+**Note: Before restart, you need to confirm JuiceFS related configuration has been written to the configuration file of each component,
+usually you can find them in `core-site.xml` on the machine where the service of the component was deployed.**
+
+| Components | Services                   |
+| ---------- | --------                   |
+| Hive       | HiveServer<br />Metastore  |
+| Spark      | ThriftServer               |
+| Presto     | Coordinator<br />Worker    |
+| Impala     | Catalog Server<br />Daemon |
+| HBase      | Master<br />RegionServer   |
+
+HDFS, Hue, ZooKeeper and other services don't need to be restarted.
+
+When `Class io.juicefs.JuiceFileSystem not found` or `No FilesSystem for scheme: jfs` exceptions was occurred after restart, reference [FAQ](#faq).
 
 ## Verification
 
@@ -136,3 +176,17 @@ CREATE TABLE IF NOT EXISTS person
   age INT
 ) LOCATION 'jfs://{JFS_NAME}/tmp/person';
 ```
+
+## FAQ
+
+### `Class io.juicefs.JuiceFileSystem not found` exception
+
+It means JAR file was not loaded, you can verify it by `lsof -p {pid} | grep juicefs`.
+
+You should check whether the JAR file was located properly, or other users have the read permission.
+
+Some Hadoop distribution also need to modify `mapred-site.xml` and put the JAR file location path to the end of the parameter `mapreduce.application.classpath`.
+
+### `No FilesSystem for scheme: jfs` exception
+
+It means JuiceFS Hadoop Java SDK was not configured properly, you need to check whether there is JuiceFS related configuration in the `core-site.xml` of the component configuration.
